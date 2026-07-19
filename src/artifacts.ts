@@ -1,0 +1,125 @@
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import ignore, { type Ignore } from 'ignore';
+
+export interface ArtifactBlock {
+  label: string;
+  content: string;
+  truncated: boolean;
+}
+
+export interface ArtifactBundle {
+  blocks: ArtifactBlock[];
+  totalBytes: number;
+  warnings: string[];
+}
+
+export interface AssembleOptions {
+  files?: string[];
+  diff?: { range?: string; paths?: string[] };
+  stdin?: string;
+  capBytes?: number;
+  cwd?: string;
+}
+
+export const DEFAULT_CAP_BYTES = 400_000;
+
+const ALWAYS_SKIP = new Set(['node_modules', '.git']);
+
+export function assembleArtifacts(options: AssembleOptions): ArtifactBundle {
+  const cwd = options.cwd ?? process.cwd();
+  const warnings: string[] = [];
+  const explicit: ArtifactBlock[] = [];
+  const expanded: ArtifactBlock[] = [];
+
+  for (const input of options.files ?? []) {
+    const full = path.resolve(cwd, input);
+    if (!fs.existsSync(full)) {
+      warnings.push(`not found: ${input}`);
+      continue;
+    }
+    const stat = fs.statSync(full);
+    if (stat.isDirectory()) {
+      for (const file of expandDirectory(full, cwd)) {
+        const block = readFileBlock(file, cwd, warnings);
+        if (block) expanded.push(block);
+      }
+    } else {
+      const block = readFileBlock(full, cwd, warnings);
+      if (block) explicit.push(block);
+    }
+  }
+
+  const blocks = [...explicit, ...expanded];
+  return { blocks, totalBytes: blocks.reduce((n, b) => n + Buffer.byteLength(b.content), 0), warnings };
+}
+
+function readFileBlock(full: string, cwd: string, warnings: string[]): ArtifactBlock | undefined {
+  const rel = path.relative(cwd, full);
+  const fd = fs.openSync(full, 'r');
+  try {
+    const head = Buffer.alloc(8192);
+    const read = fs.readSync(fd, head, 0, 8192, 0);
+    if (isBinary(head.subarray(0, read))) {
+      warnings.push(`skipped binary file: ${rel}`);
+      return undefined;
+    }
+    const content = fs.readFileSync(full, 'utf8');
+    const size = Buffer.byteLength(content);
+    return { label: `--- ${rel} (${formatBytes(size)}) ---`, content, truncated: false };
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
+function isBinary(head: Buffer): boolean {
+  if (head.length >= 2) {
+    const bom = head[0] === 0xff && head[1] === 0xfe;
+    const beBom = head[0] === 0xfe && head[1] === 0xff;
+    if (bom || beBom) return true;
+  }
+  return head.includes(0x00);
+}
+
+function expandDirectory(dir: string, cwd: string): string[] {
+  const rules: { base: string; ig: Ignore }[] = [];
+  const results: string[] = [];
+
+  function loadRule(directory: string) {
+    const file = path.join(directory, '.gitignore');
+    if (fs.existsSync(file)) {
+      rules.push({ base: directory, ig: ignore().add(fs.readFileSync(file, 'utf8')) });
+    }
+  }
+
+  function ignored(full: string, isDir: boolean): boolean {
+    for (const rule of rules) {
+      if (full.startsWith(rule.base + path.sep)) {
+        const rel = path.relative(rule.base, full);
+        if (rule.ig.ignores(rel + (isDir ? '/' : ''))) return true;
+      }
+    }
+    return false;
+  }
+
+  function walk(current: string) {
+    loadRule(current);
+    const entries = fs.readdirSync(current, { withFileTypes: true })
+      .sort((a, b) => a.name.localeCompare(b.name));
+    for (const entry of entries) {
+      if (ALWAYS_SKIP.has(entry.name)) continue;
+      const full = path.join(current, entry.name);
+      if (ignored(full, entry.isDirectory())) continue;
+      if (entry.isDirectory()) walk(full);
+      else if (entry.isFile()) results.push(full);
+    }
+  }
+
+  walk(dir);
+  return results;
+}
+
+export function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  return `${(bytes / 1024).toFixed(1)} KB`;
+}
