@@ -9,7 +9,7 @@ export async function planCommand(
   options: { models?: string }
 ): Promise<void> {
   const config = loadConfig();
-  const models = (options.models ?? 'kimi,deepseek,mimo').split(',').map((m) => m.trim());
+  const models = parseModels(options.models, config.providers);
   const systemPrompt = `You are reviewing a plan or decision. Be adversarial: question assumptions, identify risks, and suggest alternatives. Keep your response concise.`;
 
   const judges = await runCouncil(config, { prompt, mode: 'plan', models, systemPrompt });
@@ -23,4 +23,15 @@ export async function planCommand(
   const output = { prompt, mode: 'plan' as const, judges, synthesis, availableCount, totalCount: models.length };
 
   console.log(renderTOON(output));
+}
+
+function parseModels(modelsOption: string | undefined, providers: Record<string, unknown>): string[] {
+  if (modelsOption) {
+    return modelsOption.split(',').map((m) => m.trim());
+  }
+  const configured = Object.keys(providers);
+  if (configured.length === 0) {
+    throw new CouncilError('No providers configured. Set COUNCIL_PROVIDERS or pass --models.', 'NO_PROVIDERS');
+  }
+  return configured;
 }

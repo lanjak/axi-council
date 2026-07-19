@@ -1,6 +1,6 @@
 ---
 description: Run a multi-LLM adversarial review of an artifact or question
-argument-hint: '<prompt> [--models kimi,deepseek,mimo]'
+argument-hint: '<prompt> [--models <providers>]'
 disable-model-invocation: true
 allowed-tools: Bash(node:*)
 ---

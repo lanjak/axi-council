@@ -2,19 +2,28 @@ import OpenAI from 'openai';
 import { LLMProvider, ChatOptions, ChatResult, AuthResult, ProviderCapabilities } from './base.js';
 import type { ProviderConfig } from '../types.js';
 
-export abstract class OpenAICompatibleProvider extends LLMProvider {
+export class OpenAICompatibleProvider extends LLMProvider {
+  readonly name: string;
+  readonly displayName: string;
+  readonly capabilities: ProviderCapabilities;
   protected client: OpenAI;
 
   constructor(config: ProviderConfig) {
     super(config);
+    this.name = config.name ?? 'unknown';
+    this.displayName = config.displayName ?? config.name ?? 'Unknown Provider';
+    this.capabilities = { supportsReasoning: false, supportsJsonMode: true };
     this.client = new OpenAI({ apiKey: config.apiKey, baseURL: config.baseURL });
   }
 
-  abstract override readonly name: string;
-  abstract override readonly displayName: string;
-  abstract override readonly capabilities: ProviderCapabilities;
-
   async checkAuth(): Promise<AuthResult> {
+    if (!this.config.baseURL) {
+      return {
+        available: true,
+        authenticated: false,
+        detail: `${this.displayName} base URL is not set`,
+      };
+    }
     if (!this.config.apiKey) {
       return {
         available: true,

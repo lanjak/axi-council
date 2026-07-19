@@ -10,10 +10,10 @@ describe('reviewCommand', () => {
   it('renders TOON output when judges respond', async () => {
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     vi.mocked(runCouncil).mockResolvedValue([
-      { provider: 'kimi', model: 'kimi-k3', status: 'success', response: 'Ship it.' },
+      { provider: 'openai', model: 'gpt-4o', status: 'success', response: 'Ship it.' },
     ]);
 
-    await reviewCommand('ship?', { models: 'kimi' });
+    await reviewCommand('ship?', { models: 'openai' });
 
     expect(logSpy).toHaveBeenCalled();
     const output = logSpy.mock.calls[0][0] as string;

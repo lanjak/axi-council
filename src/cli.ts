@@ -24,13 +24,13 @@ program
 program
   .command('review <prompt>')
   .description('Run an adversarial review of an artifact or question')
-  .option('-m, --models <models>', 'Comma-separated provider list', 'kimi,deepseek,mimo')
+  .option('-m, --models <models>', 'Comma-separated provider list')
   .action(reviewCommand);
 
 program
   .command('plan <prompt>')
   .description('Pressure-test a plan or decision')
-  .option('-m, --models <models>', 'Comma-separated provider list', 'kimi,deepseek,mimo')
+  .option('-m, --models <models>', 'Comma-separated provider list')
   .action(planCommand);
 
 async function main(): Promise<void> {

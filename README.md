@@ -6,13 +6,7 @@
 
 `axi-council` sends a single prompt to several independent LLM judges and returns a synthesized review. It is useful when you want more than one model to look at a plan, decision, or code change before you act. Output is in [TOON](https://toonformat.dev/) so agents can read it cheaply.
 
-Supported judges:
-
-- Moonshot Kimi
-- DeepSeek
-- Xiaomi MiMo
-
-You bring your own API keys for each provider. If one judge is down or not authenticated, the council continues with whoever is available.
+It is provider-agnostic. If a provider speaks the OpenAI chat completions API, you can add it to your council by setting a few environment variables.
 
 ## Install
 
@@ -26,37 +20,120 @@ Or run without installing:
 npx -y axi-council <command>
 ```
 
-## Usage
+## Configure providers
 
-Set the supplier keys you want to use:
+Pick a short key for each provider, then set `COUNCIL_PROVIDERS` plus per-provider env vars.
+
+For example, with OpenAI and Groq:
 
 ```sh
-export KIMI_API_KEY=...
-export DEEPSEEK_API_KEY=...
-export MIMO_API_KEY=...
+export COUNCIL_PROVIDERS="openai,groq"
+
+export OPENAI_API_KEY="sk-..."
+export OPENAI_BASE_URL="https://api.openai.com/v1"
+export OPENAI_MODEL="gpt-4o"
+export OPENAI_DISPLAY_NAME="OpenAI"
+
+export GROQ_API_KEY="gsk_..."
+export GROQ_BASE_URL="https://api.groq.com/openai/v1"
+export GROQ_MODEL="llama-3.1-70b-versatile"
+export GROQ_DISPLAY_NAME="Groq"
 ```
+
+Required for each provider:
+
+- `<KEY>_API_KEY` - the provider API key
+- `<KEY>_BASE_URL` - the OpenAI-compatible base URL
+- `<KEY>_MODEL` - the model ID to call
+
+Optional:
+
+- `<KEY>_DISPLAY_NAME` - human-readable name shown in output (defaults to the key)
+
+### Example providers
+
+These are not built in. Add the ones you have keys for.
+
+**OpenAI**
+
+```sh
+OPENAI_API_KEY=sk-...
+OPENAI_BASE_URL=https://api.openai.com/v1
+OPENAI_MODEL=gpt-4o
+```
+
+**Moonshot Kimi**
+
+```sh
+KIMI_API_KEY=sk-...
+KIMI_BASE_URL=https://api.moonshot.ai/v1
+KIMI_MODEL=kimi-k3
+```
+
+**DeepSeek**
+
+```sh
+DEEPSEEK_API_KEY=sk-...
+DEEPSEEK_BASE_URL=https://api.deepseek.com/v1
+DEEPSEEK_MODEL=deepseek-chat
+```
+
+**Xiaomi MiMo**
+
+```sh
+MIMO_API_KEY=sk-...
+MIMO_BASE_URL=https://api.xiaomimimo.com/v1
+MIMO_MODEL=mimo-v2.5-pro
+```
+
+**Groq**
+
+```sh
+GROQ_API_KEY=gsk_...
+GROQ_BASE_URL=https://api.groq.com/openai/v1
+GROQ_MODEL=llama-3.1-70b-versatile
+```
+
+**Local LM Studio / Ollama / vLLM**
+
+Anything with an OpenAI-compatible endpoint works:
+
+```sh
+LOCAL_API_KEY=not-needed
+LOCAL_BASE_URL=http://localhost:1234/v1
+LOCAL_MODEL=local-model
+```
+
+## Usage
 
 Check which providers are authenticated:
 
 ```sh
 $ axi-council setup
-providers[3]{name,authenticated,detail}:
-  kimi,true,Moonshot Kimi API key is set
-  deepseek,true,DeepSeek API key is set
-  mimo,false,Xiaomi MiMo API key is not set
-help[1]: Set KIMI_API_KEY, DEEPSEEK_API_KEY, and MIMO_API_KEY to authenticate providers
+providers[2]{name,authenticated,detail}:
+  openai,true,OpenAI API key is set
+  groq,true,Groq API key is set
+help[2]:
+  Set COUNCIL_PROVIDERS and per-provider env vars to add judges
+  Example: COUNCIL_PROVIDERS=openai OPENAI_API_KEY=sk-... OPENAI_BASE_URL=https://api.openai.com/v1 OPENAI_MODEL=gpt-4o
 ```
 
 Run an adversarial review:
 
 ```sh
-$ axi-council review "Should we add a caching layer here?" --models kimi,deepseek
+$ axi-council review "Should we add a caching layer here?"
+```
+
+Or pick a subset:
+
+```sh
+$ axi-council review "Should we add a caching layer here?" --models openai,groq
 ```
 
 Pressure-test a plan:
 
 ```sh
-$ axi-council plan "Should we migrate auth to a separate service?" --models kimi,deepseek,mimo
+$ axi-council plan "Should we migrate auth to a separate service?"
 ```
 
 Example output:
@@ -65,30 +142,21 @@ Example output:
 council[review]: "Should we add a caching layer here?"
 judges: 2 of 2 responded
 judges[2]{provider,model,status,verdict}:
-  kimi,kimi-k3,success,Ship after adding cache invalidation
-  deepseek,deepseek-v4-pro,success,Ship but measure hit ratio first
+  openai,gpt-4o,success,Ship after adding cache invalidation
+  groq,llama-3.1-70b-versatile,success,Ship but measure hit ratio first
 synthesis:
   ## Council review synthesis (2 judges)
 
-  ### kimi (kimi-k3)
+  ### openai (gpt-4o)
   Ship after adding cache invalidation.
 
-  ### deepseek (deepseek-v4-pro)
+  ### groq (llama-3.1-70b-versatile)
   Ship but measure hit ratio first.
 
   **Key points:**
   - Ship after adding cache invalidation
   - Ship but measure hit ratio first
-help[1]: Run `npx -y axi-council review "<prompt>" --models kimi,deepseek,mimo`
-```
-
-## Configuration
-
-Per-provider base URLs and models can be overridden with environment variables:
-
-```sh
-export KIMI_BASE_URL=https://api.moonshot.ai/v1
-export KIMI_MODEL=kimi-k3
+help[1]: Run `npx -y axi-council review "<prompt>" --models openai,groq`
 ```
 
 ## Exit codes
@@ -102,7 +170,7 @@ export KIMI_MODEL=kimi-k3
 `axi-council` ships with an installable Agent Skill in `skills/axi-council/SKILL.md`. Copy it into your agent's skill directory, or point your agent at the CLI directly:
 
 ```sh
-npx -y axi-council review "..." --models kimi,deepseek,mimo
+npx -y axi-council review "..." --models openai,groq
 ```
 
 Session hooks are planned but not implemented yet.
@@ -113,7 +181,7 @@ Session hooks are planned but not implemented yet.
 npm install
 npm test          # vitest
 npm run build     # tsc -> dist
-npm run dev -- review "..." --models kimi
+npm run dev -- review "..." --models openai
 ```
 
 ## License

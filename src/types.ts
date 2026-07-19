@@ -25,7 +25,9 @@ export interface CouncilOutput {
 }
 
 export interface ProviderConfig {
+  name: string;
   apiKey: string;
   baseURL: string;
   model?: string;
+  displayName: string;
 }

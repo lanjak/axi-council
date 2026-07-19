@@ -1,17 +1,22 @@
-import { loadConfig } from '../config.js';
+import { loadConfig, listProviders } from '../config.js';
 import { loadProvider } from '../providers/index.js';
 
 export async function homeCommand(): Promise<void> {
   const config = loadConfig();
-  const entries = Object.entries(config.providers);
+  const providers = listProviders(config);
   const lines: string[] = [];
 
   lines.push('axi-council: multi-LLM adversarial review council');
-  lines.push(`providers[${entries.length}]{name,authenticated}:`);
-  for (const [name, providerConfig] of entries) {
+  lines.push(`providers[${providers.length}]{name,authenticated}:`);
+  for (const name of providers) {
+    const providerConfig = config.providers[name];
     const provider = loadProvider(name, providerConfig);
     const auth = await provider.checkAuth();
     lines.push(`  ${name},${auth.authenticated}`);
+  }
+
+  if (providers.length === 0) {
+    lines.push('  (none configured)');
   }
 
   lines.push('commands[3]{name,purpose}:');
@@ -20,8 +25,8 @@ export async function homeCommand(): Promise<void> {
   lines.push('  plan,pressure-test a plan or decision');
 
   lines.push('help[2]:');
-  lines.push('  Run `npx -y axi-council review "<prompt>" --models kimi,deepseek,mimo`');
-  lines.push('  Run `npx -y axi-council setup` to check provider authentication');
+  lines.push('  Set COUNCIL_PROVIDERS and per-provider env vars');
+  lines.push('  Run `axi-council review "<prompt>" --models <provider1>,<provider2>`');
 
   console.log(lines.join('\n'));
 }

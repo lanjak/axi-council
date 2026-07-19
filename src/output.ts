@@ -35,7 +35,8 @@ export function renderTOON(output: CouncilOutput): string {
       help.push(`Run \`npx -y axi-council ${output.mode} "<prompt>" --models ${responding.join(',')}\` to use only responding judges`);
     }
   } else {
-    help.push(`Run \`npx -y axi-council ${output.mode} "<prompt>" --models kimi,deepseek,mimo\``);
+    const providers = output.judges.map((j) => j.provider).join(',');
+    help.push(`Run \`npx -y axi-council ${output.mode} "<prompt>" --models ${providers}\``);
   }
   lines.push(`help[${help.length}]:`);
   for (const h of help) {

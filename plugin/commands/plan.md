@@ -1,6 +1,6 @@
 ---
 description: Pressure-test a plan or decision with multiple LLMs
-argument-hint: '<prompt> [--models kimi,deepseek,mimo]'
+argument-hint: '<prompt> [--models <providers>]'
 disable-model-invocation: true
 allowed-tools: Bash(node:*)
 ---
