@@ -1,6 +1,8 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { execFileSync } from 'node:child_process';
 import ignore, { type Ignore } from 'ignore';
+import { CouncilError } from './errors.js';
 
 export interface ArtifactBlock {
   label: string;
@@ -58,6 +60,12 @@ export function assembleArtifacts(options: AssembleOptions): ArtifactBundle {
     });
   }
 
+  const diffBlocks: ArtifactBlock[] = [];
+  if (options.diff !== undefined) {
+    const diffBlock = gitDiffBlock(options.diff, cwd);
+    if (diffBlock) diffBlocks.push(diffBlock);
+  }
+
   // Priority order: explicit --file blocks, diff, then directory expansions.
   // Cap: each block truncated to 25% of the remaining budget; when the budget
   // is exhausted the rest are omitted and named in warnings.
@@ -85,7 +93,7 @@ export function assembleArtifacts(options: AssembleOptions): ArtifactBundle {
     return true;
   };
 
-  const ordered = [...explicit, ...expanded];
+  const ordered = [...explicit, ...diffBlocks, ...expanded];
   for (const block of ordered) {
     if (!applyBudget(block)) {
       const omittedFrom = ordered.indexOf(block);
@@ -170,6 +178,30 @@ function expandDirectory(dir: string, cwd: string): string[] {
 
   walk(dir);
   return results;
+}
+
+function gitDiffBlock(spec: { range?: string; paths?: string[] }, cwd: string): ArtifactBlock | undefined {
+  const range = spec.range ?? 'HEAD';
+  const args = ['diff', range];
+  if (spec.paths && spec.paths.length > 0) {
+    args.push('--', ...spec.paths);
+  }
+
+  let content: string;
+  try {
+    content = execFileSync('git', args, { cwd, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  } catch (err) {
+    // Covers both "not a git repository" (exit 128) and a missing git binary
+    // (ENOENT) - both surface as the same user-facing error.
+    throw new CouncilError(
+      `NOT_A_REPO: --diff requires a git repository and the git binary (cwd: ${cwd})`,
+      'NOT_A_REPO'
+    );
+  }
+
+  if (content.trim().length === 0) return undefined;
+  const size = Buffer.byteLength(content);
+  return { label: `--- git diff ${range} (${formatBytes(size)}) ---`, content, truncated: false };
 }
 
 export function formatArtifactPreamble(bundle: ArtifactBundle): string {

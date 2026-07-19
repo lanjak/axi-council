@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { assembleArtifacts } from '../src/artifacts.js';
 
 let dir: string;
@@ -122,6 +123,77 @@ describe('assembleArtifacts - cap enforcement', () => {
     expect(bundle.blocks).toHaveLength(2);
     expect(bundle.blocks.every((b) => b.truncated)).toBe(true);
     expect(bundle.warnings.filter((w) => w.includes('omitted'))).toHaveLength(1);
+  });
+});
+
+function git(args: string[]) {
+  execFileSync('git', args, { cwd: dir, stdio: 'ignore' });
+}
+
+function initRepo() {
+  git(['init']);
+  git(['config', 'user.email', 'test@test']);
+  git(['config', 'user.name', 'test']);
+}
+
+describe('assembleArtifacts - git diff', () => {
+  it('attaches staged and unstaged changes by default (git diff HEAD)', () => {
+    initRepo();
+    write('tracked.md', 'original');
+    git(['add', '.']);
+    git(['commit', '-m', 'init']);
+    write('tracked.md', 'changed unstaged');
+    write('staged.md', 'staged new');
+    git(['add', 'staged.md']);
+
+    const bundle = assembleArtifacts({ diff: {}, cwd: dir });
+    expect(bundle.blocks).toHaveLength(1);
+    expect(bundle.blocks[0].label).toContain('git diff HEAD');
+    expect(bundle.blocks[0].content).toContain('changed unstaged');
+    expect(bundle.blocks[0].content).toContain('staged new');
+  });
+
+  it('passes a range through', () => {
+    initRepo();
+    write('a.md', 'one');
+    git(['add', '.']);
+    git(['commit', '-m', 'one']);
+    write('a.md', 'two');
+    git(['add', '.']);
+    git(['commit', '-m', 'two']);
+
+    const bundle = assembleArtifacts({ diff: { range: 'HEAD~1' }, cwd: dir });
+    expect(bundle.blocks[0].label).toContain('git diff HEAD~1');
+    expect(bundle.blocks[0].content).toContain('two');
+  });
+
+  it('restricts to paths when given', () => {
+    initRepo();
+    write('keep.md', 'keep original');
+    write('other.md', 'other original');
+    git(['add', '.']);
+    git(['commit', '-m', 'init']);
+    write('keep.md', 'keep changed');
+    write('other.md', 'other changed');
+
+    const bundle = assembleArtifacts({ diff: { paths: [path.join(dir, 'keep.md')] }, cwd: dir });
+    expect(bundle.blocks[0].content).toContain('keep changed');
+    expect(bundle.blocks[0].content).not.toContain('other changed');
+  });
+
+  it('produces no block for an empty diff', () => {
+    initRepo();
+    write('a.md', 'same');
+    git(['add', '.']);
+    git(['commit', '-m', 'init']);
+
+    const bundle = assembleArtifacts({ diff: {}, cwd: dir });
+    expect(bundle.blocks).toHaveLength(0);
+    expect(bundle.warnings).toEqual([]);
+  });
+
+  it('throws NOT_A_REPO outside a git repository', () => {
+    expect(() => assembleArtifacts({ diff: {}, cwd: dir })).toThrowError(/NOT_A_REPO/);
   });
 });
 
