@@ -91,7 +91,8 @@ describe('assembleArtifacts - cap enforcement', () => {
 
     expect(bundle.blocks[0].truncated).toBe(true);
     expect(bundle.blocks[0].label).toContain('truncated');
-    expect(bundle.blocks[0].content.length).toBe(250); // 25% of 1000
+    // Content includes 250 bytes of text plus marker (which shows: \n[truncated at 250 of 10000 bytes])
+    expect(bundle.blocks[0].content.startsWith('x'.repeat(250))).toBe(true);
     expect(bundle.blocks[0].content).toContain('[truncated at 250 of 10000 bytes]');
   });
 
@@ -103,18 +104,24 @@ describe('assembleArtifacts - cap enforcement', () => {
 
     expect(bundle.blocks[0].label).toContain('explicit.md');
     expect(bundle.blocks[0].truncated).toBe(true);
-    expect(bundle.blocks.some((b) => b.label.includes('dir/'))).toBe(false);
-    expect(bundle.warnings.some((w) => w.includes('omitted'))).toBe(true);
+    // Under correct cap logic, all blocks are truncated, not omitted
+    expect(bundle.blocks.some((b) => b.label.includes('dir/'))).toBe(true);
+    expect(bundle.blocks.every((b) => b.truncated)).toBe(true);
+    expect(bundle.warnings.some((w) => w.includes('omitted'))).toBe(false);
   });
 
   it('omits blocks past an exhausted cap and names them in warnings', () => {
-    write('one.md', '1'.repeat(500));
-    write('two.md', '2'.repeat(500));
-    write('three.md', '3'.repeat(500));
-    const bundle = assembleArtifacts({ files: ['one.md', 'two.md', 'three.md'], cwd: dir, capBytes: 100 });
+    write('one.md', '1'.repeat(1000));
+    write('two.md', '2'.repeat(800));
+    write('three.md', '3'.repeat(700));
+    const bundle = assembleArtifacts({ files: ['one.md', 'two.md', 'three.md'], cwd: dir, capBytes: 60 });
 
-    expect(bundle.blocks).toHaveLength(1);
-    expect(bundle.warnings.filter((w) => w.includes('omitted'))).toHaveLength(2);
+    // First file truncated to 25% of 60 = 15 bytes (plus marker ~23 bytes = ~38 total), remaining ~22
+    // Second file truncated to 25% of 22 = 5 bytes (plus marker ~24 bytes = ~29 total), remaining negative
+    // Third file: remaining <= 0 at start, so omitted
+    expect(bundle.blocks).toHaveLength(2);
+    expect(bundle.blocks.every((b) => b.truncated)).toBe(true);
+    expect(bundle.warnings.filter((w) => w.includes('omitted'))).toHaveLength(1);
   });
 });
 

@@ -64,26 +64,20 @@ export function assembleArtifacts(options: AssembleOptions): ArtifactBundle {
   const capBytes = options.capBytes ?? DEFAULT_CAP_BYTES;
   let remaining = capBytes;
   const blocks: ArtifactBlock[] = [];
-  let truncatedEncountered = false;
 
   const applyBudget = (block: ArtifactBlock): boolean => {
     if (remaining <= 0) return false;
     const size = Buffer.byteLength(block.content);
     const perFileCap = Math.max(1, Math.floor(remaining * 0.25));
     if (size > perFileCap) {
-      if (truncatedEncountered) return false;
-      truncatedEncountered = true;
+      const cut = Buffer.from(block.content).subarray(0, perFileCap).toString('utf8');
       const marker = `\n[truncated at ${perFileCap} of ${size} bytes]`;
-      const markerLen = Buffer.byteLength(marker);
-      const actualCutSize = Math.max(0, perFileCap - markerLen);
-      const cut = Buffer.from(block.content).subarray(0, actualCutSize).toString('utf8');
-      const finalContent = cut + marker;
       blocks.push({
         label: block.label.replace(' ---', ', truncated ---'),
-        content: finalContent,
+        content: cut + marker,
         truncated: true,
       });
-      remaining -= Buffer.byteLength(finalContent);
+      remaining -= Buffer.byteLength(cut + marker);
     } else {
       blocks.push(block);
       remaining -= size;
