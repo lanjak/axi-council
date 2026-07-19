@@ -1,0 +1,26 @@
+import { describe, it, expect } from 'vitest';
+import { renderTOON } from '../src/output.js';
+import type { CouncilOutput } from '../src/types.js';
+
+const sample: CouncilOutput = {
+  prompt: 'Should we ship?',
+  mode: 'review',
+  judges: [
+    { provider: 'kimi', model: 'kimi-k3', status: 'success', response: 'Yes' },
+    { provider: 'deepseek', model: 'deepseek-v4-pro', status: 'error', error: { message: 'rate limit' } },
+  ],
+  synthesis: 'Yes',
+  availableCount: 1,
+  totalCount: 2,
+};
+
+describe('output', () => {
+  it('renders TOON output with judge list', () => {
+    const toon = renderTOON(sample);
+    expect(toon).toContain('council[review]: "Should we ship?"');
+    expect(toon).toContain('judges: 1 of 2 responded');
+    expect(toon).toContain('kimi,kimi-k3,success,Yes');
+    expect(toon).toContain('deepseek,deepseek-v4-pro,error,rate limit');
+    expect(toon).toContain('help[');
+  });
+});

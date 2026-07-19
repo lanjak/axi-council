@@ -1,0 +1,54 @@
+#!/usr/bin/env node
+import { program, CommanderError } from 'commander';
+import { reviewCommand } from './commands/review.js';
+import { planCommand } from './commands/plan.js';
+import { setupCommand } from './commands/setup.js';
+import { homeCommand } from './commands/home.js';
+import { formatError } from './errors.js';
+
+program
+  .name('axi-council')
+  .description('AXI-compliant multi-LLM adversarial review council')
+  .version('0.1.0')
+  .exitOverride()
+  .configureOutput({
+    writeOut: (str: string) => process.stdout.write(str),
+    writeErr: () => {},
+  });
+
+program
+  .command('setup')
+  .description('Check provider authentication status')
+  .action(setupCommand);
+
+program
+  .command('review <prompt>')
+  .description('Run an adversarial review of an artifact or question')
+  .option('-m, --models <models>', 'Comma-separated provider list', 'kimi,deepseek,mimo')
+  .action(reviewCommand);
+
+program
+  .command('plan <prompt>')
+  .description('Pressure-test a plan or decision')
+  .option('-m, --models <models>', 'Comma-separated provider list', 'kimi,deepseek,mimo')
+  .action(planCommand);
+
+async function main(): Promise<void> {
+  if (process.argv.length <= 2) {
+    await homeCommand();
+    return;
+  }
+  await program.parseAsync(process.argv);
+}
+
+main().catch((err) => {
+  if (err instanceof CommanderError) {
+    if (err.code === 'commander.helpDisplayed' || err.code === 'commander.version') {
+      process.exit(0);
+    }
+    console.log(`${err.message.trim()}\nhelp: npx -y axi-council --help`);
+    process.exit(2);
+  }
+  console.log(formatError(err));
+  process.exit(1);
+});

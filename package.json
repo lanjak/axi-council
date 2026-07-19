@@ -1,0 +1,35 @@
+{
+  "name": "axi-council",
+  "version": "0.1.0",
+  "description": "AXI-compliant multi-LLM adversarial review council",
+  "type": "module",
+  "bin": {
+    "axi-council": "./dist/cli.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/cli.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "commander": "^12.0.0",
+    "openai": "^4.90.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  },
+  "files": [
+    "dist",
+    "skills"
+  ],
+  "keywords": ["axi", "llm", "council", "adversarial-review", "claude-code"],
+  "license": "MIT"
+}
