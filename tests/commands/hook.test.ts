@@ -4,10 +4,19 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { hookCommand } from '../../src/commands/hook.js';
 import { runCouncil } from '../../src/council.js';
+import { clearSession } from '../../src/hooks/state.js';
 
 vi.mock('../../src/council.js', () => ({
   runCouncil: vi.fn(),
 }));
+
+vi.mock('../../src/hooks/state.js', async () => {
+  const actual = await vi.importActual<typeof import('../../src/hooks/state.js')>('../../src/hooks/state.js');
+  return {
+    ...actual,
+    clearSession: vi.fn(actual.clearSession),
+  };
+});
 
 vi.mock('../../src/artifacts.js', () => ({
   assembleArtifacts: vi.fn(() => ({ blocks: [{ label: '--- git diff HEAD (1 B) ---', content: 'x', truncated: false }], totalBytes: 1, warnings: [] })),
@@ -131,6 +140,7 @@ describe('hookCommand stop gate', () => {
   beforeEach(() => {
     gateEnv();
     vi.mocked(runCouncil).mockReset();
+    vi.mocked(clearSession).mockClear();
   });
   afterEach(clearGateEnv);
 
@@ -169,6 +179,45 @@ describe('hookCommand stop gate', () => {
 
     expect(process.exitCode).toBe(0);
     expect(fs.existsSync(path.join(dir, 'council-axi', 'claude-code-g1.jsonl'))).toBe(false);
+  });
+
+  it('keeps the block verdict (exit 2, synthesis, no gate_error) even when clearSession throws', async () => {
+    seedEdits('claude-code-g1', ['/proj/a.ts']);
+    vi.mocked(runCouncil).mockResolvedValue([
+      { provider: 'mimo', model: 'm1', status: 'success', response: 'bug\nVERDICT: fail' },
+      { provider: 'deepseek', model: 'm2', status: 'success', response: 'also bad\nVERDICT: fail' },
+    ]);
+    vi.mocked(clearSession).mockImplementationOnce(() => {
+      throw new Error('EACCES: permission denied, unlink');
+    });
+
+    await hookCommand('stop', { payload });
+
+    expect(process.exitCode).toBe(2);
+    const out = logSpy.mock.calls.flat().join('\n');
+    expect(out).toContain('VERDICT: fail');
+    expect(out).not.toContain('gate_error');
+    const err = errSpy.mock.calls.flat().join(' ');
+    expect(err).toContain('fail');
+    expect(err).not.toContain('gate_error');
+  });
+
+  it('keeps the pass verdict (exit 0, pass message, no gate_error) even when clearSession throws', async () => {
+    seedEdits('claude-code-g1', ['/proj/a.ts']);
+    vi.mocked(runCouncil).mockResolvedValue([
+      { provider: 'mimo', model: 'm1', status: 'success', response: 'ok\nVERDICT: pass' },
+      { provider: 'deepseek', model: 'm2', status: 'success', response: 'fine\nVERDICT: pass' },
+    ]);
+    vi.mocked(clearSession).mockImplementationOnce(() => {
+      throw new Error('EACCES: permission denied, unlink');
+    });
+
+    await hookCommand('stop', { payload });
+
+    expect(process.exitCode).toBe(0);
+    const out = logSpy.mock.calls.flat().join('\n');
+    expect(out).toContain('pass');
+    expect(out).not.toContain('gate_error');
   });
 
   it('fails open below quorum and KEEPS state for manual re-review', async () => {

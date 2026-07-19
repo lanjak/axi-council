@@ -67,6 +67,16 @@ async function postEdit(rawPayload: string): Promise<void> {
   }
 }
 
+function safelyClearSession(key: string): void {
+  try {
+    clearSession(key);
+  } catch {
+    // Best-effort cleanup only. The block/pass decision (exit code, stdout
+    // synthesis, stderr summary) is already final at this point - a failed
+    // cleanup must never reclassify it as fail-open.
+  }
+}
+
 async function stop(rawPayload: string): Promise<void> {
   const payload = parseHookPayload(rawPayload);
   const key = resolveSessionKey(payload, () => {}); // stop stays quiet; post-edit already warned
@@ -120,14 +130,14 @@ async function stop(rawPayload: string): Promise<void> {
     if (decision.outcome === 'block') {
       console.log(synthesis);
       console.error(`council-axi gate: blocked - ${decision.reason}`);
-      clearSession(key);
       process.exitCode = 2;
+      safelyClearSession(key);
       return;
     }
 
     console.log(`council[gate]: pass - ${decision.reason}`);
-    clearSession(key);
     process.exitCode = 0;
+    safelyClearSession(key);
   } catch (err) {
     console.log(
       `council[gate_error]: ${err instanceof Error ? err.message : String(err)} - gate failed open, edits kept for re-review`
