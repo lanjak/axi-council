@@ -30,4 +30,5 @@ export interface ProviderConfig {
   baseURL: string;
   model?: string;
   displayName: string;
+  maxTokens?: number;
 }

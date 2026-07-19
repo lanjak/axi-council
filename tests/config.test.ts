@@ -37,6 +37,27 @@ describe('config', () => {
     expect(config.providers.custom.displayName).toBe('My Custom Provider');
   });
 
+  it('reads a positive MAX_TOKENS override and ignores invalid values', () => {
+    const config = loadConfig({
+      COUNCIL_PROVIDERS: 'mimo,deepseek,bad',
+      MIMO_API_KEY: 'k',
+      MIMO_BASE_URL: 'https://api.xiaomimimo.com/v1',
+      MIMO_MODEL: 'mimo-v2.5-pro',
+      MIMO_MAX_TOKENS: '65536',
+      DEEPSEEK_API_KEY: 'k',
+      DEEPSEEK_BASE_URL: 'https://api.deepseek.com/v1',
+      DEEPSEEK_MODEL: 'deepseek-v4-pro',
+      BAD_API_KEY: 'k',
+      BAD_BASE_URL: 'https://bad.example/v1',
+      BAD_MODEL: 'bad',
+      BAD_MAX_TOKENS: 'not-a-number',
+    });
+
+    expect(config.providers.mimo.maxTokens).toBe(65536);
+    expect(config.providers.deepseek.maxTokens).toBeUndefined();
+    expect(config.providers.bad.maxTokens).toBeUndefined();
+  });
+
   it('capitalizes provider key for display name when not overridden', () => {
     const config = loadConfig({
       COUNCIL_PROVIDERS: 'my_provider',

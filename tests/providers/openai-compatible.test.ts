@@ -23,6 +23,32 @@ describe('OpenAICompatibleProvider', () => {
     expect(result.usage).toEqual({ inputTokens: 10, outputTokens: 5, totalTokens: 15 });
   });
 
+  it('captures reasoning_content and defaults max_tokens high', async () => {
+    const provider = new OpenAICompatibleProvider(config);
+    const create = vi.spyOn(provider['client'].chat.completions, 'create').mockResolvedValue({
+      choices: [{ message: { content: 'answer', reasoning_content: 'thinking' } }],
+      usage: { prompt_tokens: 1, completion_tokens: 2, total_tokens: 3 },
+    } as any);
+
+    const result = await provider.chat({ prompt: 'hi', model: 'test-model' });
+
+    expect(result.content).toBe('answer');
+    expect(result.reasoning).toBe('thinking');
+    expect(create.mock.calls[0][0].max_tokens).toBe(32768);
+  });
+
+  it('honors a per-provider maxTokens override', async () => {
+    const provider = new OpenAICompatibleProvider({ ...config, maxTokens: 65536 });
+    const create = vi.spyOn(provider['client'].chat.completions, 'create').mockResolvedValue({
+      choices: [{ message: { content: 'answer' } }],
+      usage: { prompt_tokens: 1, completion_tokens: 2, total_tokens: 3 },
+    } as any);
+
+    await provider.chat({ prompt: 'hi', model: 'test-model' });
+
+    expect(create.mock.calls[0][0].max_tokens).toBe(65536);
+  });
+
   it('propagates API errors as rejections', async () => {
     const provider = new OpenAICompatibleProvider(config);
 

@@ -15,6 +15,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     const baseURL = env[`${prefix}_BASE_URL`] ?? '';
     const model = env[`${prefix}_MODEL`];
     const displayName = env[`${prefix}_DISPLAY_NAME`] ?? capitalize(provider);
+    const maxTokens = parsePositiveInt(env[`${prefix}_MAX_TOKENS`]);
 
     providers[provider] = {
       name: provider,
@@ -22,6 +23,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
       baseURL,
       model,
       displayName,
+      maxTokens,
     };
   }
 
@@ -30,6 +32,12 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
 
 function capitalize(text: string): string {
   return text.replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function parsePositiveInt(value: string | undefined): number | undefined {
+  if (!value) return undefined;
+  const n = Number.parseInt(value, 10);
+  return Number.isInteger(n) && n > 0 ? n : undefined;
 }
 
 export function listProviders(config: CouncilConfig): string[] {

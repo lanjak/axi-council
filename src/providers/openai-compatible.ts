@@ -2,6 +2,12 @@ import OpenAI from 'openai';
 import { LLMProvider, ChatOptions, ChatResult, AuthResult, ProviderCapabilities } from './base.js';
 import type { ProviderConfig } from '../types.js';
 
+// Reasoning models spend a large share of their completion budget on hidden
+// thinking tokens, so a low cap truncates the visible answer mid-sentence.
+// mimo-v2.5-pro and deepseek-v4-pro both support 65536; default generously and
+// let ${PREFIX}_MAX_TOKENS override per provider.
+const DEFAULT_MAX_TOKENS = 32768;
+
 export class OpenAICompatibleProvider extends LLMProvider {
   readonly name: string;
   readonly displayName: string;
@@ -45,12 +51,16 @@ export class OpenAICompatibleProvider extends LLMProvider {
       model: options.model,
       messages,
       temperature: options.temperature ?? 0.6,
-      max_tokens: options.maxTokens ?? 4096,
+      max_tokens: options.maxTokens ?? this.config.maxTokens ?? DEFAULT_MAX_TOKENS,
       response_format: options.jsonMode ? { type: 'json_object' } : undefined,
     });
 
     const choice = completion.choices[0];
     const content = choice?.message?.content ?? '';
+    // Reasoning models (mimo-v2.5-pro, deepseek-v4-pro) return their chain of
+    // thought in a non-standard `reasoning_content` field the SDK doesn't type.
+    const reasoning =
+      (choice?.message as { reasoning_content?: string } | undefined)?.reasoning_content ?? undefined;
     const usage = completion.usage
       ? {
           inputTokens: completion.usage.prompt_tokens,
@@ -59,6 +69,6 @@ export class OpenAICompatibleProvider extends LLMProvider {
         }
       : undefined;
 
-    return { content, usage };
+    return { content, reasoning, usage };
   }
 }

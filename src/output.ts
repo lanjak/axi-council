@@ -2,7 +2,7 @@ import type { CouncilOutput, JudgeResult } from './types.js';
 
 export function renderTOON(output: CouncilOutput): string {
   const lines: string[] = [];
-  lines.push(`council[${output.mode}]: "${escapePrompt(output.prompt)}"`);
+  lines.push(`council[${output.mode}]: "${previewPrompt(output.prompt)}"`);
   lines.push(`judges: ${output.availableCount} of ${output.totalCount} responded`);
 
   lines.push(`judges[${output.judges.length}]{provider,model,status,verdict}:`);
@@ -54,6 +54,12 @@ function escapeComma(text: string): string {
   return text.replace(/,/g, '\\,');
 }
 
-function escapePrompt(text: string): string {
-  return text.replace(/\s+/g, ' ').replace(/"/g, '\\"').trim();
+// Echo only a short preview of the prompt. A review often embeds an entire
+// artifact (a 71KB plan, say), and dumping it back verbatim on this line made
+// the prompt the bulk of the output.
+function previewPrompt(text: string): string {
+  const PREVIEW_LEN = 200;
+  const normalized = text.replace(/\s+/g, ' ').replace(/"/g, '\\"').trim();
+  if (normalized.length <= PREVIEW_LEN) return normalized;
+  return `${normalized.slice(0, PREVIEW_LEN)}... (${normalized.length} chars total)`;
 }

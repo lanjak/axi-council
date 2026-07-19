@@ -23,4 +23,13 @@ describe('output', () => {
     expect(toon).toContain('deepseek,deepseek-v4-pro,error,rate limit');
     expect(toon).toContain('help[');
   });
+
+  it('previews a long prompt instead of echoing it in full', () => {
+    const bigPrompt = 'x'.repeat(5000);
+    const toon = renderTOON({ ...sample, prompt: bigPrompt });
+    const header = toon.split('\n')[0];
+    expect(header.length).toBeLessThan(300);
+    expect(header).toContain('(5000 chars total)');
+    expect(toon).not.toContain('x'.repeat(1000));
+  });
 });
