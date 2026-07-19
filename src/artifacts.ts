@@ -50,8 +50,67 @@ export function assembleArtifacts(options: AssembleOptions): ArtifactBundle {
     }
   }
 
-  const blocks = [...explicit, ...expanded];
-  return { blocks, totalBytes: blocks.reduce((n, b) => n + Buffer.byteLength(b.content), 0), warnings };
+  if (options.stdin) {
+    explicit.push({
+      label: '--- stdin ---',
+      content: options.stdin,
+      truncated: false,
+    });
+  }
+
+  // Priority order: explicit --file blocks, diff, then directory expansions.
+  // Cap: each block truncated to 25% of the remaining budget; when the budget
+  // is exhausted the rest are omitted and named in warnings.
+  const capBytes = options.capBytes ?? DEFAULT_CAP_BYTES;
+  let remaining = capBytes;
+  const blocks: ArtifactBlock[] = [];
+  let truncatedEncountered = false;
+
+  const applyBudget = (block: ArtifactBlock): boolean => {
+    if (remaining <= 0) return false;
+    const size = Buffer.byteLength(block.content);
+    const perFileCap = Math.max(1, Math.floor(remaining * 0.25));
+    if (size > perFileCap) {
+      if (truncatedEncountered) return false;
+      truncatedEncountered = true;
+      const marker = `\n[truncated at ${perFileCap} of ${size} bytes]`;
+      const markerLen = Buffer.byteLength(marker);
+      const actualCutSize = Math.max(0, perFileCap - markerLen);
+      const cut = Buffer.from(block.content).subarray(0, actualCutSize).toString('utf8');
+      const finalContent = cut + marker;
+      blocks.push({
+        label: block.label.replace(' ---', ', truncated ---'),
+        content: finalContent,
+        truncated: true,
+      });
+      remaining -= Buffer.byteLength(finalContent);
+    } else {
+      blocks.push(block);
+      remaining -= size;
+    }
+    return true;
+  };
+
+  const ordered = [...explicit, ...expanded];
+  for (const block of ordered) {
+    if (!applyBudget(block)) {
+      const omittedFrom = ordered.indexOf(block);
+      for (const skipped of ordered.slice(omittedFrom)) {
+        warnings.push(`omitted (artifact cap ${formatBytes(capBytes)} reached): ${labelName(skipped.label)}`);
+      }
+      break;
+    }
+  }
+
+  return {
+    blocks,
+    totalBytes: blocks.reduce((n, b) => n + Buffer.byteLength(b.content), 0),
+    warnings,
+  };
+}
+
+function labelName(label: string): string {
+  return label.replace(/^--- /, '').replace(/ ---$/, '');
 }
 
 function readFileBlock(full: string, cwd: string, warnings: string[]): ArtifactBlock | undefined {
@@ -117,6 +176,15 @@ function expandDirectory(dir: string, cwd: string): string[] {
 
   walk(dir);
   return results;
+}
+
+export function formatArtifactPreamble(bundle: ArtifactBundle): string {
+  if (bundle.blocks.length === 0) return '';
+  let out = '## Artifacts\n\n';
+  for (const block of bundle.blocks) {
+    out += `${block.label}\n${block.content}\n\n`;
+  }
+  return out;
 }
 
 export function formatBytes(bytes: number): string {

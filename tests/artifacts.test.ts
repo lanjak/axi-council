@@ -83,3 +83,49 @@ describe('assembleArtifacts - file collection', () => {
     expect(bundle.warnings[0]).toContain('utf16.txt');
   });
 });
+
+describe('assembleArtifacts - cap enforcement', () => {
+  it('marks truncated files in the label', () => {
+    write('big.md', 'x'.repeat(10_000));
+    const bundle = assembleArtifacts({ files: ['big.md'], cwd: dir, capBytes: 1000 });
+
+    expect(bundle.blocks[0].truncated).toBe(true);
+    expect(bundle.blocks[0].label).toContain('truncated');
+    expect(bundle.blocks[0].content.length).toBe(250); // 25% of 1000
+    expect(bundle.blocks[0].content).toContain('[truncated at 250 of 10000 bytes]');
+  });
+
+  it('a single large explicit file is never crowded out by directory expansion', () => {
+    write('explicit.md', 'E'.repeat(900));
+    write('dir/a.md', 'A'.repeat(900));
+    write('dir/b.md', 'B'.repeat(900));
+    const bundle = assembleArtifacts({ files: ['explicit.md', 'dir'], cwd: dir, capBytes: 1000 });
+
+    expect(bundle.blocks[0].label).toContain('explicit.md');
+    expect(bundle.blocks[0].truncated).toBe(true);
+    expect(bundle.blocks.some((b) => b.label.includes('dir/'))).toBe(false);
+    expect(bundle.warnings.some((w) => w.includes('omitted'))).toBe(true);
+  });
+
+  it('omits blocks past an exhausted cap and names them in warnings', () => {
+    write('one.md', '1'.repeat(500));
+    write('two.md', '2'.repeat(500));
+    write('three.md', '3'.repeat(500));
+    const bundle = assembleArtifacts({ files: ['one.md', 'two.md', 'three.md'], cwd: dir, capBytes: 100 });
+
+    expect(bundle.blocks).toHaveLength(1);
+    expect(bundle.warnings.filter((w) => w.includes('omitted'))).toHaveLength(2);
+  });
+});
+
+describe('formatArtifactPreamble', () => {
+  it('renders blocks with labels and returns empty for nothing', async () => {
+    const { formatArtifactPreamble } = await import('../src/artifacts.js');
+    expect(formatArtifactPreamble({ blocks: [], totalBytes: 0, warnings: [] })).toBe('');
+
+    write('a.md', 'AAA');
+    const bundle = assembleArtifacts({ files: ['a.md'], cwd: dir });
+    const preamble = formatArtifactPreamble(bundle);
+    expect(preamble).toBe('## Artifacts\n\n--- a.md (3 B) ---\nAAA\n\n');
+  });
+});
