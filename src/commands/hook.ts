@@ -1,7 +1,17 @@
 import { loadConfig, listProviders } from '../config.js';
 import { readStdinPayload } from '../stdin.js';
 import { parseHookPayload } from '../hooks/payload.js';
-import { resolveSessionKey, recordEdit } from '../hooks/state.js';
+import { resolveSessionKey, recordEdit, pendingEdits, clearSession } from '../hooks/state.js';
+import { synthesize } from '../chairman.js';
+import { runCouncil } from '../council.js';
+import { assembleArtifacts, formatArtifactPreamble } from '../artifacts.js';
+import { decideGate } from '../hooks/gate.js';
+
+const GATE_SYSTEM_PROMPT = `You are one judge on a review council gating completion of a coding task. Review the diff of uncommitted changes. Be adversarial: look for bugs, security issues, broken contracts, missing tests. End your response with a final line of exactly one of:
+VERDICT: pass
+VERDICT: concerns
+VERDICT: fail
+Use fail only for issues that must be fixed before this work is acceptable.`;
 
 const EVENTS = ['session-start', 'post-edit', 'stop'] as const;
 type HookEvent = (typeof EVENTS)[number];
@@ -26,8 +36,7 @@ export async function hookCommand(
     case 'post-edit':
       return postEdit(rawPayload);
     case 'stop':
-      // Implemented in Task 9 (gate).
-      return stopPlaceholder(rawPayload);
+      return stop(rawPayload);
   }
 }
 
@@ -58,6 +67,71 @@ async function postEdit(rawPayload: string): Promise<void> {
   }
 }
 
-async function stopPlaceholder(_rawPayload: string): Promise<void> {
-  // Replaced by the real gate in Task 9.
+async function stop(rawPayload: string): Promise<void> {
+  const payload = parseHookPayload(rawPayload);
+  const key = resolveSessionKey(payload, () => {}); // stop stays quiet; post-edit already warned
+
+  let edits: string[];
+  try {
+    edits = pendingEdits(key);
+  } catch {
+    process.exitCode = 0;
+    return;
+  }
+  if (edits.length === 0) {
+    process.exitCode = 0;
+    return; // zero-cost pass-through
+  }
+
+  try {
+    const config = loadConfig();
+    const models = listProviders(config);
+    if (models.length === 0) {
+      console.log('council[gate_error]: no providers configured - gate inert');
+      process.exitCode = 0;
+      return;
+    }
+
+    const bundle = assembleArtifacts({ diff: { paths: edits }, cwd: payload.cwd ?? process.cwd() });
+    const prompt =
+      formatArtifactPreamble(bundle) +
+      `Review the above uncommitted changes to these files: ${edits.join(', ')}`;
+
+    const judges = await runCouncil(config, {
+      prompt,
+      mode: 'review',
+      models,
+      systemPrompt: GATE_SYSTEM_PROMPT,
+    });
+
+    const decision = decideGate(judges);
+
+    if (decision.outcome === 'fail-open') {
+      console.log(`council[gate_error]: ${decision.reason} - gate failed open, edits kept for re-review`);
+      process.exitCode = 0;
+      return; // state NOT cleared
+    }
+
+    const synthesis = synthesize(
+      { prompt, mode: 'review', models, systemPrompt: GATE_SYSTEM_PROMPT },
+      judges
+    );
+
+    if (decision.outcome === 'block') {
+      console.log(synthesis);
+      console.error(`council-axi gate: blocked - ${decision.reason}`);
+      clearSession(key);
+      process.exitCode = 2;
+      return;
+    }
+
+    console.log(`council[gate]: pass - ${decision.reason}`);
+    clearSession(key);
+    process.exitCode = 0;
+  } catch (err) {
+    console.log(
+      `council[gate_error]: ${err instanceof Error ? err.message : String(err)} - gate failed open, edits kept for re-review`
+    );
+    process.exitCode = 0; // fail open, state kept
+  }
 }
