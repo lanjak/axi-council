@@ -1,4 +1,4 @@
-import type { CouncilRequest, JudgeResult } from './types.js';
+import type { CouncilRequest, JudgeResult, DebateTurn } from './types.js';
 
 export function synthesize(request: CouncilRequest, judges: JudgeResult[]): string {
   const successful = judges.filter((j) => j.status === 'success' && j.response);
@@ -36,4 +36,33 @@ export function synthesize(request: CouncilRequest, judges: JudgeResult[]): stri
 
 function firstLine(text: string): string {
   return text.split('\n')[0]?.trim() ?? '';
+}
+
+export function synthesizeDebate(args: {
+  judges: DebateTurn[];
+  totalRounds: number;
+  consensus: boolean;
+}): string {
+  const lines: string[] = [];
+  const outcome = args.consensus
+    ? 'consensus reached'
+    : `no consensus after ${args.totalRounds} rounds`;
+  lines.push(`## Council debate (${args.judges.length} judges, ${args.totalRounds} rounds, ${outcome})`);
+  lines.push('');
+
+  for (const judge of args.judges) {
+    lines.push(`### ${judge.provider} (${judge.model})`);
+    lines.push(judge.response ?? '');
+    lines.push('');
+  }
+
+  const dissenters = args.judges.filter((j) => j.verdict !== 'agree');
+  if (!args.consensus && dissenters.length > 0) {
+    lines.push('**Dissent:**');
+    for (const d of dissenters) {
+      lines.push(`- ${d.provider}: ${firstLine(d.response ?? '')}`);
+    }
+  }
+
+  return lines.join('\n').trim();
 }
