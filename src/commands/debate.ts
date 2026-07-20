@@ -16,6 +16,9 @@ export async function debateCommand(prompt: string, options: DebateCommandOption
   cleanupExpired();
   const config = loadConfig();
   const models = parseModels(options.models, config.providers);
+  if (models.length < 2) {
+    throw new CouncilError('A debate needs at least 2 judges; configure more providers or widen --models', 'NO_QUORUM');
+  }
   const maxRounds = parseMaxRounds(options.maxRounds);
   const fullPrompt = await buildPrompt(prompt, options);
 
@@ -57,9 +60,6 @@ function parseModels(modelsOption: string | undefined, providers: Record<string,
   const configured = Object.keys(providers);
   if (configured.length === 0) {
     throw new CouncilError('No providers configured. Set COUNCIL_PROVIDERS or pass --models.', 'NO_PROVIDERS');
-  }
-  if (configured.length < 2) {
-    throw new CouncilError('A debate needs at least 2 judges; configure more providers or widen --models', 'NO_QUORUM');
   }
   return configured;
 }

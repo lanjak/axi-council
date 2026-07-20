@@ -41,9 +41,16 @@ describe('debateCommand', () => {
   });
 
   it('honors --max-rounds and --models', async () => {
-    vi.mocked(runDebate).mockResolvedValue({ turns: [t(1, 'kimi', 'agree')], status: 'cap' });
-    await debateCommand('q', { models: 'kimi', maxRounds: '3' });
-    expect(vi.mocked(runDebate).mock.calls[0][1]).toMatchObject({ maxRounds: 3, models: ['kimi'] });
+    vi.mocked(runDebate).mockResolvedValue({
+      turns: [t(1, 'kimi', 'agree'), t(1, 'deepseek', 'agree')],
+      status: 'cap',
+    });
+    await debateCommand('q', { models: 'kimi,deepseek', maxRounds: '3' });
+    expect(vi.mocked(runDebate).mock.calls[0][1]).toMatchObject({ maxRounds: 3, models: ['kimi', 'deepseek'] });
+  });
+
+  it('rejects an explicit single-model --models', async () => {
+    await expect(debateCommand('q', { models: 'kimi' })).rejects.toMatchObject({ code: 'NO_QUORUM' });
   });
 
   it('rejects a non-numeric --max-rounds', async () => {
