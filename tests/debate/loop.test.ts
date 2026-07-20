@@ -101,7 +101,7 @@ describe('runDebate', () => {
     });
     const p = await runDebate(config, { prompt: 'q', models: ['kimi', 'deepseek'], participate: true, maxRounds: 5 });
     expect(p.status).toBe('awaiting-caller');
-    expect(p.nextTurn).toEqual({ round: 1, participant: CALLER });
+    expect(p.nextTurn).toEqual({ round: 1, participant: CALLER, order: ['kimi', 'deepseek', CALLER] });
     expect(p.turns).toHaveLength(2); // both judges spoke first
   });
 
@@ -119,10 +119,10 @@ describe('runDebate', () => {
     const p = await runDebate(
       config,
       { prompt: 'q', models: ['kimi', 'deepseek'], participate: true, maxRounds: 5 },
-      { turns: prior, nextTurn: { round: 2, participant: 'deepseek' } }
+      { turns: prior, nextTurn: { round: 2, participant: 'deepseek', order: ['deepseek', CALLER, 'kimi'] } }
     );
     expect(p.status).toBe('awaiting-caller');
-    expect(p.nextTurn).toEqual({ round: 2, participant: CALLER });
+    expect(p.nextTurn).toEqual({ round: 2, participant: CALLER, order: ['deepseek', CALLER, 'kimi'] });
   });
 
   it('participate: NO_QUORUM is still enforced when round 1 pauses at the caller slot', async () => {
@@ -143,13 +143,76 @@ describe('runDebate', () => {
       { round: 1, provider: 'deepseek', model: 'ds-m', status: 'success' as const, response: 'b\nVERDICT: AGREE', verdict: 'agree' as const },
       { round: 1, provider: CALLER, model: CALLER, status: 'success' as const, response: 'me\nVERDICT: AGREE', verdict: 'agree' as const },
     ];
-    const roundTwoFirstSpeaker = roundOrder(['kimi', 'deepseek', CALLER], 2)[0];
+    const roundTwoOrder = roundOrder(['kimi', 'deepseek', CALLER], 2);
     const p = await runDebate(
       config,
       { prompt: 'q', models: ['kimi', 'deepseek'], participate: true, maxRounds: 5 },
-      { turns: prior, nextTurn: { round: 2, participant: roundTwoFirstSpeaker } }
+      { turns: prior, nextTurn: { round: 2, participant: roundTwoOrder[0], order: roundTwoOrder } }
     );
     expect(p.status).toBe('consensus');
     expect(p.turns).toHaveLength(3);
+  });
+
+  it('regression: a judge erroring before the caller mid-round does not skip healthy judges after resume, and does not fabricate consensus from stale verdicts', async () => {
+    // 3 judges (kimi, deepseek, mimo) + caller. Rounds 1-6 all complete with
+    // kimi and deepseek agreeing, mimo and the caller disagreeing (so the
+    // debate keeps going into round 7). At round 7 the frozen speaking order
+    // is [mimo, caller, kimi, deepseek] - mimo speaks first and errors,
+    // caller pauses, then answers AGREE. If the resume path recomputed the
+    // order from the post-attrition active set ([kimi, deepseek, caller])
+    // instead of replaying the frozen order, it would conclude the caller
+    // was already last (round "closed") and never ask kimi/deepseek in
+    // round 7 at all - leaving their round-6 AGREE verdicts stale and
+    // producing a false consensus. The fix must ask both of them for real
+    // round-7 turns.
+    const roster = ['kimi', 'deepseek', 'mimo', CALLER];
+    const prior: Array<{
+      round: number; provider: string; model: string; status: 'success';
+      response: string; verdict: 'agree' | 'disagree';
+    }> = [];
+    for (let r = 1; r <= 6; r++) {
+      prior.push({ round: r, provider: 'kimi', model: 'kimi-m', status: 'success', response: 'k', verdict: 'agree' });
+      prior.push({ round: r, provider: 'deepseek', model: 'ds-m', status: 'success', response: 'd', verdict: 'agree' });
+      prior.push({ round: r, provider: 'mimo', model: 'mm-m', status: 'success', response: 'm', verdict: 'disagree' });
+      prior.push({ round: r, provider: CALLER, model: CALLER, status: 'success', response: 'c', verdict: 'disagree' });
+    }
+    const round7Order = roundOrder(roster, 7);
+    expect(round7Order).toEqual(['mimo', CALLER, 'kimi', 'deepseek']);
+
+    scriptProviders({
+      mimo: ['ERROR'],
+      kimi: ['r7 kimi\nVERDICT: DISAGREE'],
+      deepseek: ['r7 deepseek\nVERDICT: DISAGREE'],
+    });
+
+    // First leg: round 7 starts fresh (no round-7 turns recorded yet), mimo
+    // errors, the engine pauses at the caller with the frozen order attached.
+    const paused = await runDebate(
+      config,
+      { prompt: 'q', models: ['kimi', 'deepseek', 'mimo'], participate: true, maxRounds: 7 },
+      { turns: prior, nextTurn: { round: 7, participant: round7Order[0], order: round7Order } }
+    );
+    expect(paused.status).toBe('awaiting-caller');
+    expect(paused.nextTurn).toEqual({ round: 7, participant: CALLER, order: round7Order });
+    expect(paused.turns.find((t) => t.round === 7 && t.provider === 'mimo')?.status).toBe('error');
+
+    // Second leg: the caller answers AGREE; resume mid-round with the next
+    // still-active, not-yet-spoken entry in the frozen order (kimi).
+    const callerTurn = {
+      round: 7, provider: CALLER, model: CALLER, status: 'success' as const, response: 'convinced\nVERDICT: AGREE', verdict: 'agree' as const,
+    };
+    const turnsWithCaller = [...paused.turns, callerTurn];
+    const final = await runDebate(
+      config,
+      { prompt: 'q', models: ['kimi', 'deepseek', 'mimo'], participate: true, maxRounds: 7 },
+      { turns: turnsWithCaller, nextTurn: { round: 7, participant: 'kimi', order: round7Order } }
+    );
+
+    const round7Kimi = final.turns.find((t) => t.round === 7 && t.provider === 'kimi');
+    const round7Deepseek = final.turns.find((t) => t.round === 7 && t.provider === 'deepseek');
+    expect(round7Kimi).toMatchObject({ status: 'success', verdict: 'disagree' });
+    expect(round7Deepseek).toMatchObject({ status: 'success', verdict: 'disagree' });
+    expect(final.status).not.toBe('consensus');
+    expect(final.status).toBe('cap');
   });
 });

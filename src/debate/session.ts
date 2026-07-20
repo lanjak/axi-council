@@ -49,7 +49,8 @@ export function loadSession(id: string, env: NodeJS.ProcessEnv = process.env): D
     fs.rmSync(target, { force: true });
     throw notFound;
   }
-  if (Date.now() - Date.parse(session.createdAt) > TTL_MS) {
+  const age = Date.now() - Date.parse(session.createdAt);
+  if (!Number.isFinite(age) || age > TTL_MS) {
     fs.rmSync(target, { force: true });
     throw notFound;
   }
@@ -72,7 +73,8 @@ export function cleanupExpired(env: NodeJS.ProcessEnv = process.env): void {
     try {
       const raw = fs.readFileSync(path.join(dir, name), 'utf8');
       const session = JSON.parse(raw) as DebateSession;
-      if (Date.now() - Date.parse(session.createdAt) > TTL_MS) {
+      const age = Date.now() - Date.parse(session.createdAt);
+      if (!Number.isFinite(age) || age > TTL_MS) {
         fs.rmSync(path.join(dir, name), { force: true });
       }
     } catch {

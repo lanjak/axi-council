@@ -57,6 +57,19 @@ describe('debateCommand', () => {
     await expect(debateCommand('q', { maxRounds: 'nope' })).rejects.toMatchObject({ code: 'BAD_ARG' });
   });
 
+  it('rejects a --max-rounds with trailing garbage instead of silently truncating it', async () => {
+    await expect(debateCommand('q', { maxRounds: '3abc' })).rejects.toMatchObject({ code: 'BAD_ARG' });
+  });
+
+  it('accepts a --max-rounds with surrounding whitespace, trimmed', async () => {
+    vi.mocked(runDebate).mockResolvedValue({
+      turns: [t(1, 'kimi', 'agree'), t(1, 'deepseek', 'agree')],
+      status: 'consensus',
+    });
+    await debateCommand('q', { maxRounds: ' 4 ' });
+    expect(vi.mocked(runDebate).mock.calls[0][1]).toMatchObject({ maxRounds: 4 });
+  });
+
   it('rejects fewer than 2 requested judges', async () => {
     vi.mocked(loadConfig).mockReturnValue({ providers: { kimi: { name: 'kimi', displayName: 'Kimi', apiKey: 'k', baseURL: 'https://x/v1', model: 'kimi-m' } } });
     await expect(debateCommand('q', {})).rejects.toMatchObject({ code: 'NO_QUORUM' });

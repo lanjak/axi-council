@@ -12,7 +12,7 @@ let env: NodeJS.ProcessEnv;
 
 const session = (id: string, createdAt = new Date().toISOString()): DebateSession => ({
   id, createdAt, prompt: 'q', models: ['kimi', 'deepseek', 'caller'], maxRounds: 5,
-  turns: [], nextTurn: { round: 1, participant: 'caller' },
+  turns: [], nextTurn: { round: 1, participant: 'caller', order: ['kimi', 'deepseek', 'caller'] },
 });
 
 beforeEach(() => {
@@ -41,6 +41,18 @@ describe('session store', () => {
     saveSession(session('dbt-bbbbbb', old), env);
     expect(() => loadSession('dbt-bbbbbb', env)).toThrowError(expect.objectContaining({ code: 'SESSION_NOT_FOUND' }));
     expect(fs.existsSync(sessionPath('dbt-bbbbbb', env))).toBe(false);
+  });
+
+  it('load of a session with corrupt createdAt throws SESSION_NOT_FOUND and deletes the file', () => {
+    saveSession(session('dbt-garbage', 'garbage'), env);
+    expect(() => loadSession('dbt-garbage', env)).toThrowError(expect.objectContaining({ code: 'SESSION_NOT_FOUND' }));
+    expect(fs.existsSync(sessionPath('dbt-garbage', env))).toBe(false);
+  });
+
+  it('cleanupExpired removes a session with corrupt createdAt', () => {
+    saveSession(session('dbt-garbage2', 'garbage'), env);
+    cleanupExpired(env);
+    expect(fs.existsSync(sessionPath('dbt-garbage2', env))).toBe(false);
   });
 
   it('delete is idempotent', () => {

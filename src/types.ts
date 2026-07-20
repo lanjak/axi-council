@@ -67,6 +67,6 @@ export interface DebateSession {
   models: string[]; // rotation list order; includes 'caller' last
   maxRounds: number;
   turns: DebateTurn[]; // flat, in speaking order
-  nextTurn: { round: number; participant: string };
+  nextTurn: { round: number; participant: string; order: string[] }; // order is the frozen speaking order for `round`
   warnings?: string[];
 }

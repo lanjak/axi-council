@@ -1,5 +1,5 @@
 import { loadConfig } from '../config.js';
-import { runDebate, roundOrder, activeParticipants, CALLER } from '../debate/loop.js';
+import { runDebate, activeParticipants, CALLER } from '../debate/loop.js';
 import { buildDebateOutput, renderDebateTOON, renderDebatePaused } from '../debate/render.js';
 import { cleanupExpired, newSessionId, saveSession, loadSession, deleteSession } from '../debate/session.js';
 import { formatTranscript } from '../debate/prompts.js';
@@ -67,8 +67,7 @@ function renderPause(session: DebateSession): string {
   const lastCallerIdx = callerTurnIndexes.length > 0 ? callerTurnIndexes[callerTurnIndexes.length - 1] : -1;
   const seenTurns = session.turns.slice(0, lastCallerIdx + 1);
   const unseenTurns = session.turns.slice(lastCallerIdx + 1);
-  const active = activeParticipants(session.models, session.turns);
-  const order = roundOrder(active, session.nextTurn.round);
+  const order = session.nextTurn.order;
   return renderDebatePaused({
     sessionId: session.id,
     round: session.nextTurn.round,
@@ -111,7 +110,7 @@ export async function debateTurnCommand(
   const progress = await runDebate(
     config,
     { prompt: session.prompt, models: judges, participate: true, maxRounds: session.maxRounds },
-    next ? { turns, nextTurn: next } : { turns, nextTurn: { round: session.maxRounds + 1, participant: CALLER } }
+    next ? { turns, nextTurn: next } : { turns, nextTurn: { round: session.maxRounds + 1, participant: CALLER, order: [] } }
   );
 
   if (progress.status === 'awaiting-caller') {
@@ -133,23 +132,29 @@ export async function debateTurnCommand(
   console.log(renderDebateTOON(output, { full: options.full === true }));
 }
 
-// The next speaker after the caller's turn: the participant after CALLER in
-// the current round's order, or the opener of the next round when the caller
-// closed this one. Returns undefined past maxRounds (engine will cap).
+// The next speaker after the caller's turn: the next still-active,
+// not-yet-spoken participant after CALLER in the round's FROZEN order (never
+// recomputed - a judge that errored earlier this round must not shift who
+// speaks after the caller), or the opener of the next round when the caller
+// closed this one (the engine computes that round's order fresh on resume,
+// since no turns are recorded for it yet). Returns undefined past maxRounds
+// (engine will cap).
 function participantAfterCaller(
   session: DebateSession,
   turns: DebateTurn[]
-): { round: number; participant: string } | undefined {
-  const active = activeParticipants(session.models, turns);
+): { round: number; participant: string; order: string[] } | undefined {
+  const order = session.nextTurn.order;
   const round = session.nextTurn.round;
-  const order = roundOrder(active, round);
+  const active = activeParticipants(session.models, turns);
   const idx = order.indexOf(CALLER);
-  if (idx >= 0 && idx < order.length - 1) {
-    return { round, participant: order[idx + 1] };
+  for (let i = idx + 1; i < order.length; i++) {
+    const candidate = order[i];
+    if (turns.some((t) => t.round === round && t.provider === candidate)) continue;
+    if (!active.includes(candidate)) continue;
+    return { round, participant: candidate, order };
   }
   if (round + 1 > session.maxRounds) return undefined;
-  const nextOrder = roundOrder(active, round + 1);
-  return { round: round + 1, participant: nextOrder[0] };
+  return { round: round + 1, participant: CALLER, order: [] };
 }
 
 async function readTurnText(response: string | undefined, stdin: boolean): Promise<string> {
@@ -170,7 +175,11 @@ export async function debateAbortCommand(sessionId: string): Promise<void> {
 
 export function parseMaxRounds(raw: string | undefined): number {
   if (raw === undefined) return 5;
-  const n = Number.parseInt(raw, 10);
+  const trimmed = raw.trim();
+  if (!/^\d+$/.test(trimmed)) {
+    throw new CouncilError(`--max-rounds must be a positive integer, got "${raw}"`, 'BAD_ARG');
+  }
+  const n = Number.parseInt(trimmed, 10);
   if (!Number.isInteger(n) || n < 1) {
     throw new CouncilError(`--max-rounds must be a positive integer, got "${raw}"`, 'BAD_ARG');
   }

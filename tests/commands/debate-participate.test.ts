@@ -51,7 +51,7 @@ describe('debate --participate', () => {
     expect(out).toContain('kimi position'); // unseen transcript shown in full
     const id = pendingSessionId();
     expect(out).toContain(`session: ${id}`);
-    expect(loadSession(id).nextTurn).toEqual({ round: 1, participant: 'caller' });
+    expect(loadSession(id).nextTurn).toEqual({ round: 1, participant: 'caller', order: ['kimi', 'deepseek', 'caller'] });
   });
 
   it('caller AGREE completes the debate, deletes the session, prints final output', async () => {
@@ -86,7 +86,7 @@ describe('debate --participate', () => {
     const session: DebateSession = {
       id: 'dbt-judge1', createdAt: new Date().toISOString(), prompt: 'q',
       models: ['kimi', 'deepseek', 'caller'], maxRounds: 5, turns: [],
-      nextTurn: { round: 1, participant: 'kimi' },
+      nextTurn: { round: 1, participant: 'kimi', order: ['kimi', 'deepseek', 'caller'] },
     };
     saveSession(session);
     await expect(debateTurnCommand('dbt-judge1', 'x', {})).rejects.toMatchObject({ code: 'NOT_YOUR_TURN' });

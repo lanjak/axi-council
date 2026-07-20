@@ -17,7 +17,7 @@ export interface DebateRunOptions {
 export interface DebateProgress {
   turns: DebateTurn[];
   status: 'consensus' | 'cap' | 'attrition' | 'awaiting-caller';
-  nextTurn?: { round: number; participant: string };
+  nextTurn?: { round: number; participant: string; order: string[] };
 }
 
 export function roundOrder(active: string[], round: number): string[] {
@@ -56,7 +56,7 @@ function checkRoundOneQuorum(round: number, roster: string[], turns: DebateTurn[
 export async function runDebate(
   config: CouncilConfig,
   opts: DebateRunOptions,
-  resume?: { turns: DebateTurn[]; nextTurn: { round: number; participant: string } }
+  resume?: { turns: DebateTurn[]; nextTurn: { round: number; participant: string; order: string[] } }
 ): Promise<DebateProgress> {
   const roster = opts.participate ? [...opts.models, CALLER] : [...opts.models];
   const turns: DebateTurn[] = resume ? [...resume.turns] : [];
@@ -91,14 +91,31 @@ export async function runDebate(
     const active = activeParticipants(roster, turns);
     if (active.length < 2) return { turns, status: 'attrition' };
 
-    const order = roundOrder(active, round);
-    const startIdx =
-      resume && round === resume.nextTurn.round ? Math.max(order.indexOf(resume.nextTurn.participant), 0) : 0;
+    // The round's speaking order is frozen once, at round start, from the
+    // actives at that moment. A mid-round resume (turns already recorded for
+    // this round, e.g. the caller's turn that just triggered this call)
+    // must replay that same frozen order rather than recompute it from the
+    // current active set - attrition partway through the round (a judge
+    // erroring before the caller's slot) must never shift who speaks after
+    // the resume point. A resume that lands on a fresh round (no turns
+    // recorded for it yet) computes the order anew from actives at that
+    // round's start, same as a non-resumed round.
+    let order: string[];
+    let startIdx = 0;
+    if (resume && round === resume.nextTurn.round && turns.some((t) => t.round === round)) {
+      order = resume.nextTurn.order;
+      startIdx = Math.max(order.indexOf(resume.nextTurn.participant), 0);
+    } else {
+      order = roundOrder(active, round);
+    }
 
     for (let i = startIdx; i < order.length; i++) {
       const participant = order[i];
-      // Skip anyone who already has a turn this round (resume replays a partial round).
+      // Skip anyone who already has a turn this round (resume replays a partial round)
+      // or who is no longer active (an errored judge cannot speak, even if the frozen
+      // order still lists it) - a healthy judge, by contrast, must never be skipped.
       if (turns.some((t) => t.round === round && t.provider === participant)) continue;
+      if (participant !== CALLER && !active.includes(participant)) continue;
       if (participant === CALLER) {
         // CALLER is always last in the roster, so every judge has already
         // taken its round-1 turn by the time we reach it here. Enforce
@@ -106,7 +123,7 @@ export async function runDebate(
         // never run at all: the loop returns before ever reaching the
         // post-loop check below.
         checkRoundOneQuorum(round, roster, turns);
-        return { turns, status: 'awaiting-caller', nextTurn: { round, participant: CALLER } };
+        return { turns, status: 'awaiting-caller', nextTurn: { round, participant: CALLER, order } };
       }
       turns.push(await judgeTurn(config, opts, roster.length, round, participant, turns));
     }
