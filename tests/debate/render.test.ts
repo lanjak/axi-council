@@ -11,6 +11,24 @@ const turns = [
   t(2, 'deepseek', 'agree'), t(2, 'kimi', 'agree'),
 ];
 
+describe('renderDebateTOON help lines', () => {
+  it('never suggests the caller as a --models value', () => {
+    const withCaller = [...turns, t(1, 'caller', 'disagree'), t(2, 'caller', 'agree')];
+    const consensus = buildDebateOutput({ prompt: 'q', turns: withCaller, consensus: true, maxRounds: 5, totalCount: 3 });
+    const consensusHelp = renderDebateTOON(consensus, { full: false }).split('help[')[1];
+    expect(consensusHelp).toContain('--models kimi,deepseek');
+    expect(consensusHelp).not.toContain('caller');
+
+    const split = [
+      t(1, 'kimi', 'agree'), t(1, 'deepseek', 'disagree'), t(1, 'caller', 'disagree'),
+    ];
+    const noConsensus = buildDebateOutput({ prompt: 'q', turns: split, consensus: false, maxRounds: 1, totalCount: 3 });
+    const dissentHelp = renderDebateTOON(noConsensus, { full: false }).split('help[')[1];
+    expect(dissentHelp).toContain('--models deepseek');
+    expect(dissentHelp).not.toContain('--models deepseek,caller');
+  });
+});
+
 describe('buildDebateOutput', () => {
   it('groups rounds, picks final turns, counts availability', () => {
     const o = buildDebateOutput({ prompt: 'q', turns, consensus: true, maxRounds: 5, totalCount: 2 });

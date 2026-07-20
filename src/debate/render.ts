@@ -1,5 +1,6 @@
 import { synthesizeDebate } from '../chairman.js';
 import { formatTranscript } from './prompts.js';
+import { CALLER } from './loop.js';
 import { previewPrompt } from '../output.js';
 import type { DebateOutput, DebateRound, DebateTurn } from '../types.js';
 
@@ -84,11 +85,14 @@ export function renderDebateTOON(output: DebateOutput, opts: { full: boolean }):
     for (const line of transcript.split('\n')) lines.push(`  ${line}`);
   }
 
+  // Help lines suggest --models values, so the caller (not a provider) must
+  // never appear in them.
+  const providers = output.judges.filter((j) => j.provider !== CALLER);
   const help: string[] = [];
   if (output.consensus) {
-    help.push(`Run \`npx -y council-axi debate "<prompt>" --models ${output.judges.map((j) => j.provider).join(',')}\``);
+    help.push(`Run \`npx -y council-axi debate "<prompt>" --models ${providers.map((j) => j.provider).join(',')}\``);
   } else {
-    const dissenters = output.judges.filter((j) => j.verdict !== 'agree').map((j) => j.provider);
+    const dissenters = providers.filter((j) => j.verdict !== 'agree').map((j) => j.provider);
     help.push('No consensus - continue with more rounds: rerun with --max-rounds ' + (output.maxRounds + 3));
     if (dissenters.length > 0) {
       help.push(`Or narrow to the dissenters: rerun with --models ${dissenters.join(',')}`);
