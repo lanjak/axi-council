@@ -56,8 +56,8 @@ describe('runDebate', () => {
     const seen: string[] = [];
     vi.mocked(loadProvider).mockImplementation((name: string) => ({
       name,
-      chat: vi.fn().mockImplementation((o: { prompt: string }) => {
-        seen.push(`${name}:${o.prompt.includes('pos A') ? 'saw-A' : 'blind'}`);
+      chat: vi.fn().mockImplementation((o: { system?: string }) => {
+        seen.push(`${name}:${o.system?.includes('pos A') ? 'saw-A' : 'blind'}`);
         return Promise.resolve({ content: `pos ${name === 'kimi' ? 'A' : 'B'}\nVERDICT: AGREE` });
       }),
     }) as any);

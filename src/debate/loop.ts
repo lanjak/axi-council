@@ -163,10 +163,9 @@ async function judgeTurn(
     };
   }
 
-  // The debate instructions (and, from round 2 on, the transcript) change on
-  // every call, so they are the "prompt" (user message) the model responds
-  // to. The original request stays constant across the whole debate, so it
-  // travels as the "system" framing.
+  // The debate template (role framing, VERDICT instructions, and, from round
+  // 2 on, the transcript) is the system prompt; the user's original request
+  // is the user-role message, per the design spec's "Debate system prompts".
   const instructions =
     priorTurns.length === 0
       ? openerPrompt(judgeCount)
@@ -180,8 +179,8 @@ async function judgeTurn(
 
   try {
     const result = await loadProvider(providerKey, providerConfig).chat({
-      prompt: instructions,
-      system: opts.prompt,
+      prompt: opts.prompt,
+      system: instructions,
       model: providerConfig.model,
     });
     return {
