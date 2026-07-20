@@ -180,6 +180,11 @@ Each round, judges speak in turn and each sees every prior turn's full
 response before writing their own. Judges rotate through the same order each
 round. A debate needs at least 2 judges (`NO_QUORUM` otherwise).
 
+You are always a participant: the caller sits in the rotation as one more
+judge, is attacked like one, and its verdict gates consensus like everyone
+else's. The command pauses when your turn comes up and tells you exactly how
+to continue (see "Taking your turn" below).
+
 ```sh
 $ council-axi debate "Should we add a caching layer here?" --models openai,groq
 ```
@@ -189,7 +194,6 @@ Options for `debate "<prompt>"` (same artifact flags as `review`/`plan`):
 - `-m, --models <models>` - comma-separated provider list
 - `--max-rounds <n>` - maximum debate rounds (default: 5)
 - `--full` - include the complete round-by-round transcript in the output
-- `--participate` - join the debate yourself as a caller-participant
 - `-f, --file <path>` - attach a file or directory (repeatable)
 - `--diff [range]` - attach git diff (default: HEAD)
 - `--stdin` - attach artifact content from stdin
@@ -219,14 +223,13 @@ turns, your response must end with `VERDICT: AGREE` or `VERDICT: DISAGREE`.
 `debate abort <session-id>` deletes a paused session. It is idempotent - it
 is not an error to abort a session that has already finished or expired.
 
-### Participating yourself
+### Taking your turn
 
-Pass `--participate` to sit in the rotation as a judge. The debate runs the
-other judges' turns normally, then pauses on your turn and prints a session
-id plus the exact command to continue with:
+The debate runs the other judges' turns normally, then pauses on your turn
+and prints a session id plus the exact command to continue with:
 
 ```sh
-$ council-axi debate "Should we add a caching layer here?" --models openai,groq --participate
+$ council-axi debate "Should we add a caching layer here?" --models openai,groq
 council[debate]: awaiting your turn
 status: awaiting-caller (round 1 of 5, turn 3 of 3)
 session: dbt-a1b2c3

@@ -42,10 +42,11 @@ npx -y council-axi debate "<prompt>" --models openai,groq
 ```
 
 Each judge's turn must end with `VERDICT: AGREE` or `VERDICT: DISAGREE`;
-consensus requires every active judge to agree on their latest turn. Pass
-`--participate` to join the rotation yourself - the command pauses with a
+consensus requires every active judge to agree on their latest turn. You are
+always in the rotation yourself - the command pauses on your turn with a
 session id and the exact `debate turn <session-id> --stdin` command to
-continue with. Sessions expire 24 hours after creation.
+continue with, and your verdict gates consensus like any judge's. Sessions
+expire 24 hours after creation.
 
 ## Commands
 

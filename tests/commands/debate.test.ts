@@ -37,7 +37,7 @@ describe('debateCommand', () => {
     const out = logs.join('\n');
     expect(out).toContain('council[debate]:');
     expect(out).toContain('consensus: reached in 1 of 5 rounds');
-    expect(vi.mocked(runDebate).mock.calls[0][1]).toMatchObject({ maxRounds: 5, participate: false, models: ['kimi', 'deepseek'] });
+    expect(vi.mocked(runDebate).mock.calls[0][1]).toMatchObject({ maxRounds: 5, participate: true, models: ['kimi', 'deepseek'] });
   });
 
   it('honors --max-rounds and --models', async () => {

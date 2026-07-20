@@ -13,7 +13,6 @@ export interface DebateCommandOptions extends ArtifactOptions {
   models?: string;
   maxRounds?: string;
   full?: boolean;
-  participate?: boolean;
 }
 
 export async function debateCommand(prompt: string, options: DebateCommandOptions): Promise<void> {
@@ -26,10 +25,12 @@ export async function debateCommand(prompt: string, options: DebateCommandOption
   const maxRounds = parseMaxRounds(options.maxRounds);
   const fullPrompt = await buildPrompt(prompt, options);
 
+  // The caller always debates: it authored the prompt, so it sits in the
+  // rotation and its verdict gates consensus like any judge.
   const progress = await runDebate(config, {
     prompt: fullPrompt.text,
     models,
-    participate: options.participate === true,
+    participate: true,
     maxRounds,
   });
 
@@ -54,7 +55,7 @@ export async function debateCommand(prompt: string, options: DebateCommandOption
     turns: progress.turns,
     consensus: progress.status === 'consensus',
     maxRounds,
-    totalCount: options.participate ? models.length + 1 : models.length,
+    totalCount: models.length + 1,
     warnings: fullPrompt.warnings,
   });
   console.log(renderDebateTOON(output, { full: options.full === true }));

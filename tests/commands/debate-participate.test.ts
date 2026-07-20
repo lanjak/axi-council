@@ -43,9 +43,9 @@ function pendingSessionId(): string {
   return files[0].replace(/\.json$/, '');
 }
 
-describe('debate --participate', () => {
+describe('debate (caller always participates)', () => {
   it('pauses at the caller slot, persists the session, prints the instruction block', async () => {
-    await debateCommand('q', { participate: true });
+    await debateCommand('q', {});
     const out = logs.join('\n');
     expect(out).toContain('status: awaiting-caller (round 1 of 5, turn 3 of 3)');
     expect(out).toContain('kimi position'); // unseen transcript shown in full
@@ -55,7 +55,7 @@ describe('debate --participate', () => {
   });
 
   it('caller AGREE completes the debate, deletes the session, prints final output', async () => {
-    await debateCommand('q', { participate: true });
+    await debateCommand('q', {});
     const id = pendingSessionId();
     logs = [];
     await debateTurnCommand(id, 'I agree with the council\nVERDICT: AGREE', {});
@@ -66,7 +66,7 @@ describe('debate --participate', () => {
   });
 
   it('caller DISAGREE continues into round 2 and pauses at the caller again', async () => {
-    await debateCommand('q', { participate: true });
+    await debateCommand('q', {});
     const id = pendingSessionId();
     logs = [];
     await debateTurnCommand(id, 'not convinced\nVERDICT: DISAGREE', {});
@@ -93,13 +93,13 @@ describe('debate --participate', () => {
   });
 
   it('requires exactly one of positional response and --stdin', async () => {
-    await debateCommand('q', { participate: true });
+    await debateCommand('q', {});
     const id = pendingSessionId();
     await expect(debateTurnCommand(id, undefined, {})).rejects.toMatchObject({ code: 'BAD_ARG' });
   });
 
   it('abort is idempotent', async () => {
-    await debateCommand('q', { participate: true });
+    await debateCommand('q', {});
     const id = pendingSessionId();
     await debateAbortCommand(id);
     expect(fs.existsSync(sessionPath(id))).toBe(false);
@@ -107,8 +107,8 @@ describe('debate --participate', () => {
   });
 
   it('two participating sessions stay independent', async () => {
-    await debateCommand('q1', { participate: true });
-    await debateCommand('q2', { participate: true });
+    await debateCommand('q1', {});
+    await debateCommand('q2', {});
     const debatesDir = path.dirname(sessionPath('x'));
     expect(fs.readdirSync(debatesDir)).toHaveLength(2);
   });
