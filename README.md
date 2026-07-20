@@ -167,6 +167,99 @@ synthesis:
 help[1]: Run `npx -y council-axi review "<prompt>" --models openai,groq`
 ```
 
+## Debate mode
+
+`review` and `plan` ask judges independently, in parallel, and synthesize the
+disagreement for you to resolve. `debate` instead makes judges argue with
+each other in sequence, round by round, until they converge on a verdict or
+a round cap is hit. Reach for it when a `review` comes back split and you
+want the judges to actually confront each other's reasoning instead of you
+mediating.
+
+Each round, judges speak in turn and each sees every prior turn's full
+response before writing their own. Judges rotate through the same order each
+round. A debate needs at least 2 judges (`NO_QUORUM` otherwise).
+
+```sh
+$ council-axi debate "Should we add a caching layer here?" --models openai,groq
+```
+
+Options for `debate "<prompt>"` (same artifact flags as `review`/`plan`):
+
+- `-m, --models <models>` - comma-separated provider list
+- `--max-rounds <n>` - maximum debate rounds (default: 5)
+- `--full` - include the complete round-by-round transcript in the output
+- `--participate` - join the debate yourself as a caller-participant
+- `-f, --file <path>` - attach a file or directory (repeatable)
+- `--diff [range]` - attach git diff (default: HEAD)
+- `--stdin` - attach artifact content from stdin
+
+### Verdict tags
+
+Every judge turn must end with a verdict line:
+
+```
+VERDICT: AGREE
+VERDICT: DISAGREE
+```
+
+The tag can follow any amount of free-form reasoning, is matched
+case-insensitively, and only the last matching line in a turn counts.
+Consensus is reached when every active participant's latest verdict is
+`AGREE`. A turn with no verdict tag counts as `DISAGREE` - the debate fails
+safe toward continuing rather than toward a false consensus.
+
+### Continuing a paused debate
+
+`debate turn <session-id> ["<response>"] [--stdin] [--full]` submits your
+turn in a debate you are participating in. Provide the response as either a
+positional argument or via `--stdin`, never both or neither. Like judge
+turns, your response must end with `VERDICT: AGREE` or `VERDICT: DISAGREE`.
+
+`debate abort <session-id>` deletes a paused session. It is idempotent - it
+is not an error to abort a session that has already finished or expired.
+
+### Participating yourself
+
+Pass `--participate` to sit in the rotation as a judge. The debate runs the
+other judges' turns normally, then pauses on your turn and prints a session
+id plus the exact command to continue with:
+
+```sh
+$ council-axi debate "Should we add a caching layer here?" --models openai,groq --participate
+council[debate]: awaiting your turn
+status: awaiting-caller (round 1 of 5, turn 3 of 3)
+session: dbt-a1b2c3
+transcript:
+  ...
+help[2]:
+  It is your turn. Read the transcript above, take a position, attack the
+  weakest points of the other judges' latest turns, then respond with:
+  echo "<your turn, ending with VERDICT: AGREE or VERDICT: DISAGREE>" | npx -y council-axi debate turn dbt-a1b2c3 --stdin
+
+$ echo "I agree the cache adds complexity but the hit ratio data supports it.
+VERDICT: AGREE" | council-axi debate turn dbt-a1b2c3 --stdin
+council[debate]: "Should we add a caching layer here?"
+judges: 3 of 3 responded
+...
+consensus: reached in 1 of 5 rounds
+...
+```
+
+If the round is not yet resolved, `debate turn` pauses again with a new
+transcript slice (only turns you have not seen) and the same session id; run
+it again until the final synthesis prints. Sessions are stored under the XDG
+state directory and expire 24 hours after creation - an expired or unknown
+session id fails with `SESSION_NOT_FOUND`.
+
+### Cost
+
+Debate calls are serial, not parallel: each turn waits on the previous one,
+and every turn's prompt carries the full transcript so far, so later rounds
+cost more per call than earlier ones. `--max-rounds` (default 5) is the main
+lever for keeping cost bounded - lower it for cheap exploratory debates,
+raise it for questions worth grinding on.
+
 ## Attaching artifacts
 
 ```sh

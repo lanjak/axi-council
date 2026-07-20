@@ -27,8 +27,29 @@ Use this skill when the user wants adversarial feedback on a plan, decision, des
    ```
 3. Return stdout verbatim to the user.
 
+## Debate vs review/plan
+
+`review` and `plan` ask judges independently and in parallel - cheap,
+fast, good for breadth of opinion. `debate` makes judges argue with each
+other in sequence, round by round, until they converge or hit a round cap -
+slower and more expensive (serial calls, growing prompts), but better for
+depth on a single contested question. Escalate from `review`/`plan` to
+`debate` when the judges disagree or the stakes are high enough to justify
+the extra cost.
+
+```bash
+npx -y council-axi debate "<prompt>" --models openai,groq
+```
+
+Each judge's turn must end with `VERDICT: AGREE` or `VERDICT: DISAGREE`;
+consensus requires every active judge to agree on their latest turn. Pass
+`--participate` to join the rotation yourself - the command pauses with a
+session id and the exact `debate turn <session-id> --stdin` command to
+continue with. Sessions expire 24 hours after creation.
+
 ## Commands
 
 - `npx -y council-axi setup` - check authentication
 - `npx -y council-axi review "..."` - adversarial review
 - `npx -y council-axi plan "..."` - pressure-test a plan
+- `npx -y council-axi debate "..."` - sequential adversarial debate until consensus
