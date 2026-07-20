@@ -8,3 +8,4 @@ dist/
 
 # Internal design docs stay local-only (public repo)
 docs/superpowers/
+docs/
