@@ -64,7 +64,7 @@ function escapeComma(text: string): string {
 // Echo only a short preview of the prompt. A review often embeds an entire
 // artifact (a 71KB plan, say), and dumping it back verbatim on this line made
 // the prompt the bulk of the output.
-function previewPrompt(text: string): string {
+export function previewPrompt(text: string): string {
   const PREVIEW_LEN = 200;
   const normalized = text.replace(/\s+/g, ' ').replace(/"/g, '\\"').trim();
   if (normalized.length <= PREVIEW_LEN) return normalized;
