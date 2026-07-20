@@ -49,6 +49,10 @@ Required for each provider:
 Optional:
 
 - `<KEY>_DISPLAY_NAME` - human-readable name shown in output (defaults to the key)
+- `<KEY>_MAX_TOKENS` - response token cap per call (defaults to 32768)
+- `<KEY>_TEMPERATURE` - sampling temperature; when unset the field is omitted
+  entirely and the provider's own default applies (some endpoints reject any
+  explicit value - Kimi's k3 only accepts 1)
 
 ### Example providers
 
@@ -213,16 +217,6 @@ Consensus is reached when every active participant's latest verdict is
 `AGREE`. A turn with no verdict tag counts as `DISAGREE` - the debate fails
 safe toward continuing rather than toward a false consensus.
 
-### Continuing a paused debate
-
-`debate turn <session-id> ["<response>"] [--stdin] [--full]` submits your
-turn in a debate you are participating in. Provide the response as either a
-positional argument or via `--stdin`, never both or neither. Like judge
-turns, your response must end with `VERDICT: AGREE` or `VERDICT: DISAGREE`.
-
-`debate abort <session-id>` deletes a paused session. It is idempotent - it
-is not an error to abort a session that has already finished or expired.
-
 ### Taking your turn
 
 The debate runs the other judges' turns normally, then pauses on your turn
@@ -254,6 +248,16 @@ transcript slice (only turns you have not seen) and the same session id; run
 it again until the final synthesis prints. Sessions are stored under the XDG
 state directory and expire 24 hours after creation - an expired or unknown
 session id fails with `SESSION_NOT_FOUND`.
+
+### Session commands
+
+`debate turn <session-id> ["<response>"] [--stdin] [--full]` submits your
+turn in a paused debate. Provide the response as either a positional
+argument or via `--stdin`, never both or neither. Like judge turns, your
+response must end with `VERDICT: AGREE` or `VERDICT: DISAGREE`.
+
+`debate abort <session-id>` deletes a paused session. It is idempotent - it
+is not an error to abort a session that has already finished or expired.
 
 ### Cost
 
